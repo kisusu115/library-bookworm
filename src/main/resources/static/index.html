@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>도서관 책벌레</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f7f9;
+            margin: 0;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+            box-sizing: border-box;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .header-content h1 {
+            margin: 0 20px 0 0;
+            font-size: 2.5em;
+        }
+        .tab-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #e9ecef;
+            border: none;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+        .tab.active {
+            background-color: #0056b3;
+            border-bottom: 3px solid #007bff;
+            font-weight: 600;
+        }
+        .panel {
+            display: none;
+        }
+        .panel.active {
+            display: block;
+        }
+        textarea, input[type="file"], input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 128px;
+            resize: vertical;
+        }
+        .excel-options {
+            display: flex;
+            gap: 15px;
+        }
+        .excel-options > div {
+            flex: 1;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+        }
+        button:disabled {
+            background-color: #a0cfff;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #a8d8ff;
+        }
+        .progress-container {
+            margin-top: 30px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 20px;
+            width: 0%;
+            background-color: #28a745;
+            transition: width 0.4s ease;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-weight: bold;
+        }
+        #status-text {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: 500;
+            color: #555;
+        }
+        #download-link {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+        #download-link a {
+            display: inline-block;
+            padding: 12px 25px;
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+        }
+        #download-link a:hover {
+            background-color: #218838;
+        }
+        #error-message {
+            color: #dc3545;
+            text-align: center;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-content">
+        <img src="bookworm.png" alt="Bookworm" style="height: 120px; vertical-align: middle;">
+        <h1>도서관 책벌레</h1>
+    </div>
+
+    <div class="tab-container">
+        <button class="tab active" onclick="openTab(event, 'text-input')">텍스트로 입력</button>
+        <button class="tab" onclick="openTab(event, 'excel-input')">엑셀 파일로 입력</button>
+    </div>
+
+    <div id="text-input" class="panel active">
+        <textarea id="isbn-text" placeholder="여기에 ISBN 목록을 한 줄에 하나씩 붙여넣으세요."></textarea>
+    </div>
+
+    <div id="excel-input" class="panel">
+        <input type="file" id="excel-file" accept=".xlsx">
+        <div class="excel-options">
+            <div>
+                <label for="isbn-column">ISBN 열 (예: A, J)</label>
+                <input type="text" id="isbn-column" value="J">
+            </div>
+            <div>
+                <label for="start-row">시작 행 (예: 2)</label>
+                <input type="number" id="start-row" value="2">
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <label for="ttbkey">TTB Key</label>
+        <input type="text" id="ttbkey" placeholder="알라딘 TTB 키를 입력하세요.">
+    </div>
+
+    <button id="process-btn" onclick="startProcess()">처리 시작</button>
+
+    <div class="progress-container" id="progress-container">
+        <div id="status-text">처리 중...</div>
+        <div class="progress-bar">
+            <div class="progress-bar-fill" id="progress-bar-fill">0%</div>
+        </div>
+        <div id="error-message"></div>
+    </div>
+
+    <div id="download-link">
+        <a href="#" id="download-btn">엑셀 파일 다운로드</a>
+    </div>
+</div>
+
+<script>
+    let currentJobId = null;
+    let eventSource = null;
+
+    const processBtn = document.getElementById('process-btn');
+    const progressBarFill = document.getElementById('progress-bar-fill');
+    const statusText = document.getElementById('status-text');
+    const progressContainer = document.getElementById('progress-container');
+    const downloadLink = document.getElementById('download-link');
+    const downloadBtn = document.getElementById('download-btn');
+    const errorMessage = document.getElementById('error-message');
+
+    let activeTab = 'text-input';
+
+    function openTab(evt, tabName) {
+        activeTab = tabName;
+        const panels = document.getElementsByClassName('panel');
+        for (let i = 0; i < panels.length; i++) {
+            panels[i].style.display = 'none';
+            panels[i].classList.remove('active');
+        }
+        const tabs = document.getElementsByClassName('tab');
+        for (let i = 0; i < tabs.length; i++) {
+            tabs[i].classList.remove('active');
+        }
+        document.getElementById(tabName).style.display = 'block';
+        document.getElementById(tabName).classList.add('active');
+        evt.currentTarget.classList.add('active');
+    }
+
+    function resetUI() {
+        progressContainer.style.display = 'none';
+        downloadLink.style.display = 'none';
+        errorMessage.textContent = '';
+        progressBarFill.style.width = '0%';
+        progressBarFill.textContent = '0%';
+        processBtn.disabled = false;
+    }
+
+    function startProcess() {
+        resetUI();
+        processBtn.disabled = true;
+        progressContainer.style.display = 'block';
+        statusText.textContent = '서버에 요청 중입니다...';
+
+        let url;
+        let body;
+        let headers = {};
+
+        const ttbkey = document.getElementById('ttbkey').value;
+        if (!ttbkey) {
+            showError('TTB 키를 입력해주세요.');
+            return;
+        }
+
+        if (activeTab === 'text-input') {
+            const textData = document.getElementById('isbn-text').value;
+            url = `/api/process/text?ttbkey=${encodeURIComponent(ttbkey)}`;
+            body = textData;
+            headers['Content-Type'] = 'text/plain';
+        } else {
+            url = '/api/process/excel';
+            const fileInput = document.getElementById('excel-file');
+            const isbnColumn = document.getElementById('isbn-column').value;
+            const startRow = document.getElementById('start-row').value;
+
+            if (!fileInput.files[0]) {
+                showError('엑셀 파일을 선택해주세요.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('isbnColumn', isbnColumn);
+            formData.append('startRow', startRow);
+            formData.append('ttbkey', ttbkey);
+            body = formData;
+        }
+
+        fetch(url, { method: 'POST', headers: headers, body: body })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('서버 요청에 실패했습니다.');
+                }
+                return response.text();
+            })
+            .then(jobId => {
+                currentJobId = jobId;
+                statusText.textContent = '작업이 시작되었습니다. 진행률 수신 중...';
+                connectToSse(jobId);
+            })
+            .catch(err => {
+                showError(err.message);
+            });
+    }
+
+    function connectToSse(jobId) {
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource(`/api/status/${jobId}`);
+
+        eventSource.addEventListener('progress', event => {
+            const progress = parseFloat(event.data).toFixed(2);
+            progressBarFill.style.width = `${progress}%`;
+            progressBarFill.textContent = `${progress}%`;
+            statusText.textContent = `처리 중... (${progress}%)`;
+        });
+
+        eventSource.addEventListener('complete', event => {
+            progressBarFill.style.width = `100%`;
+            progressBarFill.textContent = `100%`;
+            statusText.textContent = '작업이 완료되었습니다!';
+            downloadLink.style.display = 'block';
+            downloadBtn.href = `/api/download/${currentJobId}`;
+            eventSource.close();
+            processBtn.disabled = false;
+        });
+
+        eventSource.addEventListener('error', event => {
+            let message = '오류가 발생했습니다.';
+            if (event.data) {
+                message = event.data.startsWith('error: ') ? event.data.substring(7) : event.data;
+            }
+            showError(message);
+            eventSource.close();
+        });
+
+        eventSource.onerror = () => {
+            showError('서버와의 연결이 끊겼습니다. 다시 시도해주세요.');
+            eventSource.close();
+        };
+    }
+
+    function showError(message) {
+        errorMessage.textContent = message;
+        statusText.textContent = '오류 발생';
+        progressContainer.style.display = 'block';
+        processBtn.disabled = false;
+    }
+
+    // Set initial tab
+    document.querySelector('.tab.active').click();
+
+</script>
+</body>
+</html>
