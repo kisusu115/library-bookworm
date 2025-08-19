@@ -20,6 +20,9 @@ public class AladinService {
     private final XmlMapper xmlMapper;
 
     public Optional<AladinItemDto> searchBookByIsbn(String isbn, String ttbkey) {
+        if (isbn == null || isbn.trim().isEmpty()) {
+            return Optional.empty();
+        }
         String url = "https://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey=" + ttbkey +
                      "&itemIdType=ISBN13&ItemId=" + isbn +
                      "&output=xml&Version=20131101&OptResult=packing,subinfo";

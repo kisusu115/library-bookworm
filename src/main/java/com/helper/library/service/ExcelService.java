@@ -11,10 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,20 +35,18 @@ public class ExcelService {
 
             for (int i = startRow - 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
+                String isbn = "";
                 if (row != null) {
                     Cell cell = row.getCell(isbnColIndex);
-                    if (cell != null && cell.getCellType() == CellType.STRING) {
-                        String isbn = cell.getStringCellValue().trim();
-                        if (!isbn.isEmpty()) {
-                            isbns.add(isbn);
-                        }
-                    } else if (cell != null && cell.getCellType() == CellType.NUMERIC) {
-                        String isbn = String.valueOf((long) cell.getNumericCellValue()).trim();
-                        if (!isbn.isEmpty()) {
-                            isbns.add(isbn);
+                    if (cell != null) {
+                        if (cell.getCellType() == CellType.STRING) {
+                            isbn = cell.getStringCellValue().trim();
+                        } else if (cell.getCellType() == CellType.NUMERIC) {
+                            isbn = new java.text.DecimalFormat("0").format(cell.getNumericCellValue()).trim();
                         }
                     }
                 }
+                isbns.add(isbn);
             }
         }
         log.info("Parsed {} ISBNs from Excel file.", isbns.size());
@@ -59,12 +54,12 @@ public class ExcelService {
     }
 
     public List<String> parseIsbnFromText(String text) {
-        List<String> isbns = Arrays.stream(text.split("\r?\n"))
+        if (text == null) {
+            return new ArrayList<>();
+        }
+        return Arrays.stream(text.split("\r?\n", -1))
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
-        log.info("Parsed {} ISBNs from text input.", isbns.size());
-        return isbns;
     }
 
     public CompletableFuture<Workbook> createExcelFile(List<String> isbns, String ttbkey, Consumer<Double> progressCallback) {
@@ -75,54 +70,51 @@ public class ExcelService {
 
             int total = isbns.size();
             if (total == 0) {
+                sheet.createRow(1);
                 return workbook;
             }
 
+            int rowNum = 1;
             AtomicInteger completedCount = new AtomicInteger(0);
-            AtomicInteger lastLoggedPercent = new AtomicInteger(0);
 
-            List<CompletableFuture<AladinItemDto>> futures = isbns.stream()
-                    .map(isbn -> {
+            for (String isbn : isbns) {
+                try {
+                    Optional<AladinItemDto> itemOpt;
+                    // ISBN이 유효한 경우에만 API 요청 진행
+                    final boolean isValidIsbn = isbn != null && isbn.matches("^\\d{13}$");
+
+                    if (isValidIsbn) {
+                        itemOpt = aladinService.searchBookByIsbn(isbn, ttbkey);
+                    } else {
+                        itemOpt = Optional.empty();
+                    }
+
+                    Row row = sheet.createRow(rowNum++);
+                    itemOpt.ifPresent(item -> populateRowWithData(row, item));
+
+                    if (itemOpt.isEmpty()) {
+                        row.createCell(0).setCellValue(isbn);
+                    }
+                } catch (Exception e) {
+                    log.error("Error processing ISBN: {}", isbn, e);
+                    sheet.createRow(rowNum++).createCell(0).setCellValue(isbn);
+                } finally {
+                    int completed = completedCount.incrementAndGet();
+                    double progress = (double) completed / total * 100;
+                    progressCallback.accept(progress);
+
+                    final boolean wasApiCalled = isbn != null && isbn.matches("^\\d{13}$");
+                    if (wasApiCalled) {
                         try {
                             Thread.sleep(100);
-                        } catch (InterruptedException e) {
+                        } catch (InterruptedException ie) {
                             Thread.currentThread().interrupt();
-                            throw new RuntimeException(e);
+                            log.warn("Interrupted during sleep", ie);
                         }
-                        return CompletableFuture.supplyAsync(() -> aladinService.searchBookByIsbn(isbn, ttbkey).orElse(null), taskExecutor)
-                            .whenComplete((item, throwable) -> {
-                                int completed = completedCount.incrementAndGet();
-                                double progress = (double) completed / total * 100;
-                                progressCallback.accept(progress);
-
-                                int currentProgress = (int) progress;
-                                int lastLogged = lastLoggedPercent.get();
-
-                                if (currentProgress >= 10 && currentProgress / 10 > lastLogged / 10) {
-                                    if (lastLoggedPercent.compareAndSet(lastLogged, currentProgress)) {
-                                        log.info("Processing job... {}% complete ({} / {} items).", (currentProgress / 10) * 10, completed, total);
-                                    }
-                                }
-
-                                if (throwable != null) {
-                                    log.error("Error fetching data for an ISBN", throwable);
-                                }
-                            });
-                    })
-                    .collect(Collectors.toList());
-
-            List<AladinItemDto> results = futures.stream()
-                    .map(CompletableFuture::join)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-
-            int rowNum = 1;
-            for (AladinItemDto item : results) {
-                Row row = sheet.createRow(rowNum++);
-                populateRowWithData(row, item);
+                    }
+                }
             }
 
-            // Auto-size columns for better readability
             for (int i = 0; i < getHeader().length; i++) {
                 sheet.autoSizeColumn(i);
             }
